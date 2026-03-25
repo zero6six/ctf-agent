@@ -105,8 +105,14 @@ def _is_internal_url(url: str) -> bool:
 
 
 async def do_web_fetch(url: str, method: str = "GET", body: str = "") -> str:
-    if _is_internal_url(url):
-        return "Fetch error: access to internal/private networks is blocked."
+    # Rewrite for host-side execution (agent usage uses host.docker.internal)
+    if "host.docker.internal" in url:
+        url = url.replace("host.docker.internal", "127.0.0.1")
+
+    # For local CTF challenges, we often need to hit localhost/internal IPs
+    # if _is_internal_url(url):
+    #     return "Fetch error: access to internal/private networks is blocked."
+
     try:
         # verify=False: CTF challenge services often use self-signed certs
         async with httpx.AsyncClient(verify=False, timeout=30.0) as client:

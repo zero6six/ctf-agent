@@ -4,6 +4,63 @@ Autonomous CTF (Capture The Flag) solver that races multiple AI models against c
 
 Built by [Veria Labs](https://verialabs.com), founded by members of [.;,;.](https://ctftime.org/team/222911) (smiley), the [#1 US CTF team on CTFTime in 2024 and 2025](https://ctftime.org/stats/2024/US). We build AI agents that find and exploit real security vulnerabilities for large enterprises.
 
+## Zero6six Note
+
+从夯到拉评价 Agent，这里给到拉完了，自己修改后接入模型 glm-4.5-air（别问我为什么不接 glm-5，那个由于并发限制高跑的更慢），做[题目](https://ctf.xidian.edu.cn/training/22?challenge=884)，最终成功拿到错误的 Flag，日志如下：
+
+```powershell
+python backend/cli.py init prob1 `
+  --category web `
+  --value 500 `
+  --connection-info "http://127.0.0.1:57540" `
+  --description "省流：http请求有很多讲究！试试吧！"
+
+  python backend/cli.py run `
+--challenge ./prob1 `
+--offline `
+--models generic-openai/glm-4.5-air
+
+Challenge: prob1 (web, 500 pts)
+[15:44:14] INFO     Sandbox started: 2dd44dbecac6
+[15:44:14] INFO     [prob1/glm-4.5-air] Solver started
+[15:44:14] INFO     [prob1/glm-4.5-air] Agent requesting model...
+[15:44:18] INFO     [prob1/glm-4.5-air] Tool call: web_fetch({'url': 'http://host.docker.internal:57540', 'method': 'GET', 'body': ''})
+[15:44:18] INFO     [prob1/glm-4.5-air] Tool result: HTTP 200 OK ────────────────────────────────────────      <!DOCTYPE html>     <html lang="zh">     <...
+[15:44:22] INFO     [prob1/glm-4.5-air] Tool call: web_fetch({'url': 'http://host.docker.internal:57540/stone_golem', 'method': 'GET', 'body': ''})
+[15:44:22] INFO     [prob1/glm-4.5-air] Tool result: HTTP 200 OK ────────────────────────────────────────      <!DOCTYPE html>     <html lang="zh">      ...
+[15:44:24] INFO     [prob1/glm-4.5-air] Tool call: web_fetch({'url': 'http://host.docker.internal:57540/stone_golem?key=xdsec', 'method': 'GET', 'body': ''})
+[15:44:24] INFO     [prob1/glm-4.5-air] Tool result: HTTP 200 OK ────────────────────────────────────────      <!DOCTYPE html>     <html lang="zh">      ...
+[15:44:27] INFO     [prob1/glm-4.5-air] Tool call: web_fetch({'url': 'http://host.docker.internal:57540/cloud_weaver', 'method': 'GET', 'body': ''})
+[15:44:27] INFO     [prob1/glm-4.5-air] Tool result: HTTP 200 OK ────────────────────────────────────────      <!DOCTYPE html>     <html lang="zh">     <...
+[15:44:29] INFO     [prob1/glm-4.5-air] Tool call: web_fetch({'url': 'http://host.docker.internal:57540/cloud_weaver', 'method': 'POST', 'body': 'declaration=织云阁...)
+[15:44:29] INFO     [prob1/glm-4.5-air] Tool result: HTTP 200 OK ────────────────────────────────────────              <!DOCTYPE html>             <html ...
+[15:44:33] INFO     [prob1/glm-4.5-air] Tool call: web_fetch({'url': 'http://host.docker.internal:57540/cloud_weaver', 'method': 'POST', 'body': 'declaration=织云阁...)
+[15:44:33] INFO     [prob1/glm-4.5-air] Tool result: HTTP 200 OK ────────────────────────────────────────              <!DOCTYPE html>             <html ...
+[15:45:12] INFO     [prob1/glm-4.5-air] Tool call: bash({'command': 'curl -X POST "http://host.docker.internal:57540/cloud_weaver" -d "declaration=织云阁=第一" -...)
+--------------此处省略若干--------------
+[15:46:09] INFO     [prob1/glm-4.5-air] Tool result: <!DOCTYPE html>             <html lang="zh">             <head>                 <meta charset="UTF-8...
+[15:46:13] INFO     [prob1/glm-4.5-air] Tool call: web_fetch({'url': 'http://host.docker.internal:57540/final_success', 'method': 'GET', 'body': ''})
+[15:46:13] INFO     [prob1/glm-4.5-air] Tool result: HTTP 200 OK ────────────────────────────────────────      <!DOCTYPE html>     <html lang="zh">     <...
+[15:46:27] INFO     [prob1/glm-4.5-air] Tool call: submit_flag({'flag': 'moecode{C0rz4u114710n5_9mvxg7N_pDv2M2_x5_r30ly_lx19ah=}'})
+
+[MOCK] Submitting flag for prob1: moecode{C0rz4u114710n5_9mvxg7N_pDv2M2_x5_r30ly_lx19ah=}
+[15:46:27] INFO     [prob1/glm-4.5-air] Tool result: MOCK SUBMISSION: moecode{C0rz4u114710n5_9mvxg7N_pDv2M2_x5_r30ly_lx19ah=}
+[15:46:36] WARNING  Could not calculate cost for glm-4.5-air
+[15:46:36] INFO     [prob1/glm-4.5-air] Analysis: 
+[15:46:36] INFO     [prob1] Flag found by generic-openai/glm-4.5-air: moecode{C0rz4u114710n5_9mvxg7N_pDv2M2_x5_r30ly_lx19ah=}
+[15:46:37] INFO     Sandbox stopped
+
+FLAG FOUND: moecode{C0rz4u114710n5_9mvxg7N_pDv2M2_x5_r30ly_lx19ah=}
+
+Cost Summary:
+  prob1/glm-4.5-air: 646.0k in / 592.4k cached (92% hit) / 3.5k out | $0.00 | 142.0s
+  Total: $0.00
+```
+
+上述日志中已经获取到了此题所需要的所有 flag 片段，只需拼接加 base64 解码即可，但是模型却连这一点都没有做到。
+
+可见由于上下文不断膨胀，模型的理解能力和效率都会受到影响，且较差的模型影响更为明显，而好的模型又花费巨大，因此在当下的技术条件下，使用这个项目并不方便，不如 Codex 与 Github Copilot 之类。
+
 ## Results
 
 | Competition | Challenges Solved | Result |

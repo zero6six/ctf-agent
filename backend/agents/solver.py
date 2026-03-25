@@ -54,12 +54,18 @@ class TracingToolset(WrapperToolset[SolverDeps]):
     tracer: SolverTracer = field(repr=False)
     loop_detector: LoopDetector = field(repr=False)
     step_counter: list[int] = field(repr=False)
+    agent_name: str = field(default="agent", repr=False)
 
     async def call_tool(
         self, name: str, tool_args: dict[str, Any], ctx: RunContext[SolverDeps], tool: ToolsetTool[SolverDeps]
     ) -> Any:
         self.step_counter[0] += 1
         step = self.step_counter[0]
+
+        args_str = str(tool_args)
+        if len(args_str) > 100:
+            args_str = args_str[:100] + "..."
+        logger.info(f"[{self.agent_name}] Tool call: {name}({args_str})")
 
         self.tracer.tool_call(name, tool_args, step)
 
@@ -74,6 +80,12 @@ class TracingToolset(WrapperToolset[SolverDeps]):
         result = await self.wrapped.call_tool(name, tool_args, ctx, tool)
 
         result_str = str(result) if result is not None else ""
+
+        result_log = result_str.replace('\n', ' ')
+        if len(result_log) > 100:
+            result_log = result_log[:100] + "..."
+        logger.info(f"[{self.agent_name}] Tool result: {result_log}")
+
         self.tracer.tool_result(name, result_str, step)
 
         # Inject loop warning alongside result on "warn" level
@@ -177,6 +189,7 @@ class Solver:
             tracer=self.tracer,
             loop_detector=self.loop_detector,
             step_counter=self._step_count,
+            agent_name=self.agent_name,
         )
 
         self._agent = Agent(
@@ -202,6 +215,7 @@ class Solver:
 
         try:
             from pydantic_ai.usage import UsageLimits
+            logger.info(f"[{self.agent_name}] Agent requesting model...")
             result = await self._agent.run(
                 "Solve this CTF challenge." if not self._messages else "Continue solving.",
                 deps=self.deps,
@@ -233,6 +247,12 @@ class Solver:
                 if isinstance(msg, ModelResponse):
                     text_parts = [p.content for p in msg.parts if isinstance(p, TextPart)]
                     text = " ".join(text_parts)
+
+                    log_text = text.replace('\n', ' ')
+                    if len(log_text) > 200:
+                        log_text = log_text[:200] + "..."
+                    logger.info(f"[{self.agent_name}] Analysis: {log_text}")
+
                     msg_usage = msg.usage
                     self.tracer.model_response(
                         text[:500], self._step_count[0],

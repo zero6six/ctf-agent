@@ -28,9 +28,59 @@ def _setup_logging(verbose: bool = False) -> None:
     logging.basicConfig(level=level, handlers=[handler], force=True)
 
 
-@click.command()
+@click.group()
+def cli():
+    """CTF Agent — multi-model solver swarm."""
+    pass
+
+
+@cli.command()
+@click.argument("name")
+@click.option("--category", default="misc", help="Challenge category")
+@click.option("--value", default=500, type=int, help="Challenge value")
+@click.option("--description", default="", help="Challenge description")
+@click.option("--connection-info", default="", help="Connection info (nc host port / http://...)")
+@click.option("--dir", "directory", default=".", help="Output directory")
+def init(
+    name: str,
+    category: str,
+    value: int,
+    description: str,
+    connection_info: str,
+    directory: str,
+) -> None:
+    """Initialize a new challenge directory with metadata.yml template."""
+    import yaml
+    from pathlib import Path
+
+    path = Path(directory) / name
+    path.mkdir(parents=True, exist_ok=True)
+    (path / "distfiles").mkdir(exist_ok=True)
+
+    meta = {
+        "name": name,
+        "category": category,
+        "value": value,
+        "description": description,
+        "connection_info": connection_info,
+        "tags": [],
+        "hints": [],
+        "solves": 0,
+    }
+    
+    meta_path = path / "metadata.yml"
+    if meta_path.exists():
+        console.print(f"[yellow]metadata.yml already exists in {path}[/yellow]")
+    else:
+        with open(meta_path, "w") as f:
+            yaml.dump(meta, f, sort_keys=False)
+        console.print(f"[green]Initialized challenge in {path}[/green]")
+
+
+@cli.command()
 @click.option("--ctfd-url", default=None, help="CTFd URL (overrides .env)")
 @click.option("--ctfd-token", default=None, help="CTFd API token (overrides .env)")
+@click.option("--offline", is_flag=True, help="Run without CTFd connection (manual mode)")
 @click.option("--image", default="ctf-sandbox", help="Docker sandbox image name")
 @click.option("--models", multiple=True, help="Model specs (default: all configured)")
 @click.option("--challenge", default=None, help="Solve a single challenge directory")
@@ -41,9 +91,10 @@ def _setup_logging(verbose: bool = False) -> None:
 @click.option("--max-challenges", default=10, type=int, help="Max challenges solved concurrently")
 @click.option("--msg-port", default=0, type=int, help="Operator message port (0 = auto)")
 @click.option("-v", "--verbose", is_flag=True, help="Verbose logging")
-def main(
+def run(
     ctfd_url: str | None,
     ctfd_token: str | None,
+    offline: bool,
     image: str,
     models: tuple[str, ...],
     challenge: str | None,
@@ -55,23 +106,30 @@ def main(
     msg_port: int,
     verbose: bool,
 ) -> None:
-    """CTF Agent — multi-model solver swarm.
-
-    Run without --challenge to start the full coordinator (Ctrl+C to stop).
-    """
+    """Run the solver swarm or coordinator."""
     _setup_logging(verbose)
 
     settings = Settings(sandbox_image=image)
-    if ctfd_url:
+    if offline:
+        settings.ctfd_url = None
+    elif ctfd_url:
         settings.ctfd_url = ctfd_url
+
     if ctfd_token:
         settings.ctfd_token = ctfd_token
+    
     settings.max_concurrent_challenges = max_challenges
 
     model_specs = list(models) if models else list(DEFAULT_MODELS)
+    
+    if not offline and not settings.ctfd_url and not challenge:
+        console.print("[yellow]Warning: No CTFd URL configured and not in offline mode. Defaulting to offline/manual mode.[/yellow]")
+        settings.ctfd_url = None
 
     console.print("[bold]CTF Agent v2[/bold]")
-    console.print(f"  CTFd: {settings.ctfd_url}")
+    console.print(f"  Mode: {'Offline/Manual' if not settings.ctfd_url else 'Connected'}")
+    if settings.ctfd_url:
+        console.print(f"  CTFd: {settings.ctfd_url}")
     console.print(f"  Models: {', '.join(model_specs)}")
     console.print(f"  Image: {settings.sandbox_image}")
     console.print(f"  Max challenges: {max_challenges}")
@@ -80,7 +138,11 @@ def main(
     if challenge:
         asyncio.run(_run_single(settings, challenge, model_specs, no_submit, max_challenges))
     else:
+        if not settings.ctfd_url:
+            console.print("[red]Error: Coordinator mode requires a CTFd connection to fetch challenges. Use --challenge to solve a single local challenge manually.[/red]")
+            sys.exit(1)
         asyncio.run(_run_coordinator(settings, model_specs, challenges_dir, no_submit, coordinator_model, coordinator, max_challenges, msg_port))
+
 
 
 async def _run_single(
@@ -189,7 +251,7 @@ async def _run_coordinator(
     console.print(f"\n[bold]Total cost: ${results.get('total_cost_usd', 0):.2f}[/bold]")
 
 
-@click.command()
+@cli.command()
 @click.argument("message")
 @click.option("--port", default=9400, type=int, help="Coordinator message port")
 @click.option("--host", default="127.0.0.1", help="Coordinator host")
@@ -216,4 +278,4 @@ def msg(message: str, port: int, host: str) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    cli()

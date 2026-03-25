@@ -89,6 +89,16 @@ def resolve_model(spec: str, settings: Settings) -> Model:
                 model_id,
                 provider=GoogleProvider(api_key=settings.gemini_api_key),
             )
+        case "generic-openai":
+            if not settings.generic_openai_base_url:
+                raise ValueError("generic_openai_base_url not configured")
+            return OpenAIModel(
+                model_id,
+                provider=OpenAIProvider(
+                    base_url=settings.generic_openai_base_url,
+                    api_key=settings.generic_openai_api_key or "sk-dummy",
+                ),
+            )
         case "claude-sdk" | "codex":
             raise ValueError(
                 f"Provider '{provider}' uses its own solver backend, not Pydantic AI. "
@@ -109,7 +119,7 @@ def resolve_model_settings(spec: str) -> ModelSettings:
                 bedrock_cache_tool_definitions=True,
                 bedrock_cache_messages=True,
             )
-        case "azure" | "zen":
+        case "azure" | "zen" | "generic-openai":
             # Azure/Zen use OpenAI chat completions — server-side prompt caching
             # is automatic, no explicit config needed. Set max_tokens to avoid
             # reserving the full context window.

@@ -23,7 +23,7 @@ class SubmitResult:
 
 @dataclass
 class CTFdClient:
-    base_url: str = "http://localhost:8000"
+    base_url: str | None = "http://localhost:8000"
     token: str = ""
     username: str = "admin"
     password: str = "admin"
@@ -33,12 +33,19 @@ class CTFdClient:
     _logged_in: bool = False
     _challenge_ids: dict[str, int] = field(default_factory=dict)
 
+    @property
+    def is_mock(self) -> bool:
+        return not self.base_url
+
     async def _ensure_client(self) -> httpx.AsyncClient:
+        if self.is_mock:
+            raise RuntimeError("CTFdClient is in mock mode (no URL configured).")
+
         if self._client is None:
             # verify=False: CTFd instances often use self-signed certs or HTTP.
             # This is a CTF tool, not production infrastructure.
             self._client = httpx.AsyncClient(
-                base_url=self.base_url.rstrip("/"),
+                base_url=(self.base_url or "").rstrip("/"),
                 follow_redirects=False,
                 verify=False,
                 timeout=30.0,
@@ -47,6 +54,9 @@ class CTFdClient:
         return self._client
 
     async def _ensure_logged_in(self) -> None:
+        if self.is_mock:
+            return
+
         if self._logged_in or self.token:
             return
         client = await self._ensure_client()
@@ -128,6 +138,9 @@ class CTFdClient:
         return [ch for ch in data.get("data", []) if ch.get("type") != "hidden"]
 
     async def get_challenge_id(self, name: str) -> int:
+        if self.is_mock:
+            return 1337
+
         if name in self._challenge_ids:
             return self._challenge_ids[name]
 
@@ -140,6 +153,15 @@ class CTFdClient:
         return self._challenge_ids[name]
 
     async def submit_flag(self, challenge_name: str, flag: str) -> SubmitResult:
+        if self.is_mock:
+            print(f"\n[MOCK] Submitting flag for {challenge_name}: {flag}")
+            # In mock mode, we assume the user checks the flag. 
+            # We return 'unknown' so the solver doesn't automatically stop unless it's designed to stop on unknown.
+            # But usually 'correct' stops the solver. 
+            # Let's return a special status or just log it. 
+            # If we return 'correct', the loop terminates. This is probably desired if the tool found a flag.
+            return SubmitResult("correct", "Flag submitted (Mock)", f"MOCK SUBMISSION: {flag}")
+
         challenge_id = await self.get_challenge_id(challenge_name)
         resp = await self._post(
             "/challenges/attempt",
@@ -217,14 +239,15 @@ class CTFdClient:
         for raw_url in challenge.get("files") or []:
             dist_dir = ch_dir / "distfiles"
             dist_dir.mkdir(exist_ok=True)
-            url = raw_url if raw_url.startswith("http") else f"{self.base_url.rstrip('/')}/{raw_url.lstrip('/')}"
+            base_url_str = (self.base_url or "").rstrip("/")
+            url = raw_url if raw_url.startswith("http") else f"{base_url_str}/{raw_url.lstrip('/')}"
             url_path = urlparse(url).path
             fname = url_path.rstrip("/").rsplit("/", 1)[-1] or "file"
             dest = dist_dir / fname
             if not dest.exists():
                 try:
                     # Only send auth headers to our CTFd server
-                    headers = self._base_headers() if urlparse(url).hostname == urlparse(self.base_url).hostname else {}
+                    headers = self._base_headers() if self.base_url and urlparse(url).hostname == urlparse(self.base_url).hostname else {}
                     resp = await client.get(
                         url, headers=headers,
                         follow_redirects=True, timeout=60.0,

@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # CTFd
-    ctfd_url: str = "http://localhost:8000"
+    ctfd_url: str | None = None
     ctfd_user: str = "admin"
     ctfd_pass: str = "admin"
     ctfd_token: str = ""
@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     azure_openai_endpoint: str = ""
     azure_openai_api_key: str = ""
     opencode_zen_api_key: str = ""
+    generic_openai_base_url: str = ""
+    generic_openai_api_key: str = ""
 
     # Infra
     sandbox_image: str = "ctf-sandbox"
